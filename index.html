@@ -1,0 +1,278 @@
+﻿﻿<!DOCTYPE html>
+<html lang="en">
+
+<!-- D:\home\2_MIT\Hydro\01_石門水庫\tank_model_autopi\index.html -->
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>水筒模式自動校正參數</title>
+
+    <!-- bootstrap v5.0 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <link href="css/myStyles.css" rel="stylesheet" />
+    <style>
+        .demo-placeholder {
+            width: 100%;
+            height: 100%;
+            font-size: 14px;
+            line-height: 0.8em;
+        }
+
+        .flot-chart {
+            display: block;
+            height: 220px;
+        }
+
+        @media only screen and (min-width: 768px) {
+
+            body,
+            input,
+            button,
+            select,
+            textarea,
+            h2,
+            h3,
+            h4,
+            p {
+                font-size: 1.0em;
+            }
+
+            .flot-chart {
+                display: block;
+                height: 380px;
+            }
+
+            .demo-placeholder {
+                width: 100%;
+                height: 100%;
+                font-size: 14px;
+                line-height: 0.8em;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Title -->
+    <div class="container-fluid mt-2">
+        <h1 class=" text-center text-bold text-black">石門水庫集水區降雨逕流模擬(水筒模式)</h1>
+    </div>
+
+    <!-- Chart1 -->
+    <div class="container-lg">
+        <!-- 輸入條件 -->
+        <div class="d-flex justify-content-center mb-1">
+            <div class="row g-0">
+                <div class="col-auto">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text" id="inputGroup-sizing-sm">開始日期</span>
+                        <input id="obs-date" class="form-control" value="2024-07-24"
+                            type="date">
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text" id="inputGroup-sizing-sm">日數</span>
+                        <input id="days" type="number" class="form-control" value="3" min="2"
+                            style="width:80px;">
+                    </div>
+                </div>
+                <div class="col-auto btn-group ms-2">
+                    <button type="button" id="rank-flow-btn" class="btn btn-sm btn-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="搜尋並列出當年度最高流量的前三名事件，點擊可快速跳至該事件日期">
+                        搜尋最高流量排行
+                    </button>
+                    <ul class="dropdown-menu" id="flow-rank-dropdown">
+                        <!-- Dropdown items will be populated by JavaScript -->
+                    </ul>
+                </div>
+                <div class="col-auto btn-group ms-2">
+                    <button type="button" id="rank-daily-rain-btn" class="btn btn-sm btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                        搜尋日雨量排行
+                    </button>
+                    <ul class="dropdown-menu" id="daily-rain-rank-dropdown">
+                        <!-- Dropdown items will be populated by JavaScript -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 水筒模式參數 -->
+        <div id="tank-parameters-container" class="card bg-light mb-3" style="display: none;">
+            <div class="card-header">
+                <h6 class="mb-0">水筒模式參數 (石門水庫)</h6>
+            </div>
+            <div class="card-body py-2">
+                <div id="tank-parameters-content"
+                    class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 g-2 small">
+                    <!-- Parameters will be inserted here by JavaScript -->
+                </div>
+            </div>
+            <div class="card-footer text-end py-2">
+                <label for="load-tank-params-input" class="btn btn-sm btn-info me-2" title="從 JSON 檔案載入水筒模式參數">載入參數</label>
+                <input type="file" id="load-tank-params-input" style="display: none;" accept=".json,application/json">
+                <button type="button" id="download-tank-params-btn" class="btn btn-sm btn-secondary me-2" title="將目前介面上的參數下載為 JSON 檔案">下載參數</button>
+                <button type="button" id="save-tank-params-btn" class="btn btn-sm btn-success me-2" title="將目前參數儲存至瀏覽器並下載備份檔">儲存參數</button>
+                <button type="button" id="reset-tank-params-btn" class="btn btn-sm btn-secondary me-2" title="將水筒模式參數恢復為程式預設值">恢復預設值</button>
+                <button type="button" id="run-tank-model-btn" class="btn btn-sm btn-primary" title="使用目前介面上的參數執行一次模擬">執行演算</button>
+                <div class="btn-group">
+                    <button type="button" id="autocal-btn" class="btn btn-sm btn-warning" title="使用 RPROP 演算法自動尋找最佳參數">自動校正</button>
+                    <button type="button" class="btn btn-sm btn-warning dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="選擇目標函數">
+                        <span class="visually-hidden">Toggle Dropdown</span>
+                    </button>
+                    <ul class="dropdown-menu" id="objective-function-dropdown">
+                        <li><a class="dropdown-item active" href="#" data-value="RMSE">目標: 均方根誤差 (RMSE)</a></li>
+                        <li><a class="dropdown-item" href="#" data-value="NSE">目標: 效率係數 (NSE)</a></li>
+                        <li><a class="dropdown-item" href="#" data-value="PeakFlowError">目標: 尖峰流量誤差</a></li>
+                    </ul>
+                </div>
+                <button type="button" id="rprop-settings-btn" class="btn btn-sm btn-outline-secondary ms-1" data-bs-toggle="modal" data-bs-target="#rpropSettingsModal" title="設定 RPROP 自動校正演算法的參數">校正設定</button>
+            </div>
+            <div id="autocal-progress-container" class="card-footer py-2" style="display: none;">
+                <div class="progress" style="height: 20px;">
+                    <div id="autocal-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                </div>
+                <div id="autocal-progress-text" class="text-center small mt-1"></div>
+            </div>
+        </div>
+
+        <!-- 展示歷線圖 -->
+        <div class="card bg-white rounded">
+
+            <div class="card-header bg-primary d-flex justify-content-between align-items-center">
+                <div>
+                    <span id="SubID" class="text-light"></span>
+                    <span id="chart-title-text" class="text-light">集水區降雨逕流與觀測流量歷線圖</span>
+                    <span id="Load-indicator1" class="badge w3-yellow"></span>
+                </div>
+                <div>
+                    <button id="export-png-btn" class="btn btn-sm btn-light" title="將目前的圖表匯出為 PNG 圖片檔">匯出 PNG</button>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <p id="InitTime" class="text-center pt-0"></p>
+                <!-- chart -->
+                <div class="flot-chart">
+                    <div id="Chart_Hydrograph" class="demo-placeholder"></div>
+                </div>
+            </div>
+
+            <!-- 圖表註腳/摘要 -->
+             <div class="card-footer">
+                <div id="chart-summary" class="d-flex justify-content-start align-items-center small fw-bold"></div>
+             </div>
+        </div>
+
+    </div>
+    <br />
+
+    <!-- Data Table -->
+    <div class="container-lg mt-3">
+        <div class="card bg-white rounded">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0" id="table-title">詳細數據列表</h5>
+                <div class="d-flex">
+                    <input type="text" id="table-search" class="form-control form-control-sm me-2" placeholder="搜尋時間 (YYYY-MM-DD HH:MM)...">
+                    <button id="export-csv-btn" class="btn btn-sm btn-light text-nowrap" title="將下方的詳細數據匯出為 CSV 檔案">匯出 CSV</button>
+                </div>
+            </div>
+            <div class="card-body p-0" style="height: 400px; overflow-y: auto;">
+                <table class="table table-striped table-hover table-sm mb-0">
+                    <thead class="table-light" style="position: sticky; top: 0;">
+                        <tr>
+                            <th scope="col">觀測時間</th>
+                            <th scope="col">觀測雨量 (mm/hr)</th>
+                            <th scope="col">水庫入流量 (cms)</th>
+                            <th scope="col" class="sim-runoff-header" style="display: none;">模擬入流量 (cms)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-table-body">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+        <div id="toast-container"></div>
+    </div>
+
+    <!-- RPROP Settings Modal -->
+    <div class="modal fade" id="rpropSettingsModal" tabindex="-1" aria-labelledby="rpropSettingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="rpropSettingsModalLabel">RPROP 自動校正設定</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="rprop-settings-form">
+                        <div class="mb-3">
+                            <label for="rprop-maxIter" class="form-label">最大疊代次數 (maxIter)</label>
+                            <input type="number" class="form-control" id="rprop-maxIter" value="100" min="1">
+                            <div class="form-text">演算法執行的最大次數。</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="rprop-initialStep" class="form-label">初始步長 (initialStep)</label>
+                            <input type="number" class="form-control" id="rprop-initialStep" value="0.1" step="0.01" min="0">
+                             <div class="form-text">參數更新的初始大小。</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="rprop-minFChange" class="form-label">目標函數變化容許值 (minFChange)</label>
+                            <input type="text" class="form-control" id="rprop-minFChange" value="1e-7">
+                            <div class="form-text">當目標函數的變化量小於此值時，演算法停止。請使用科學記號表示，例如 1e-7。</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="rprop-minF" class="form-label">目標函數容許值 (minF)</label>
+                            <input type="text" class="form-control" id="rprop-minF" value="1e-6">
+                            <div class="form-text">當目標函數本身小於此值時，演算法停止。請使用科學記號表示，例如 1e-6。</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="reset-rprop-settings-btn" class="btn btn-outline-secondary me-auto" title="將設定恢復為程式預設值">恢復預設值</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" title="關閉視窗不儲存變更">取消</button>
+                    <button type="button" id="save-rprop-settings-btn" class="btn btn-primary" title="儲存目前的設定並關閉視窗">儲存設定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- footer -->
+    <footer>
+        <p class="p-4 bg-blue-600 text-light text-center">
+            版權所有© 2025 多采科技有限公司
+        </p>
+    </footer>
+
+    <!--- jquery -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+
+    <!-- Bootstrap 5 -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"
+        integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js"
+        integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF"
+        crossorigin="anonymous"></script>
+
+    <!-- flot core -->
+    <script src="./flot/jquery.flot.js"></script>
+    <script src="./flot/jquery.flot.time.js"></script>
+    <script src="./flot/jquery.flot.selection.js"></script>
+    <script src="./flot/jquery.flot.resize.js"></script>
+    <script src="./flot/jquery.flot.tooltip.min.js"></script>
+    <script src="./flot/jquery.flot.axislabels.js"></script>
+    <script src="./flot/jquery.flot.dashes.js"></script>
+    <script src="./flot/jquery.flot.symbol.js"></script>
+
+    <script src="main.js" type="module"></script>
+
+</body>
+
+</html>
