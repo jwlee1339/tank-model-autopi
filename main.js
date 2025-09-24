@@ -1,6 +1,6 @@
-﻿// for ObsRainRunoff.html
+// for ObsRainRunoff.html
 // 2025-09-23
-// 2024-06-13
+// 2025-09-24
 // code with GEMINI Code Assist
 
 import { ReadData } from "./js/ReadData.js";
@@ -79,40 +79,63 @@ function DrawChart(PlotData, ResId) {
     chart2.plotRainfallRunoff();
     chart2.ShowSubResultsTable();
 
-    // --- 更新圖表註腳的摘要 ---
-    const summaryContainer = $("#chart-summary");
-    summaryContainer.empty(); // 清空舊內容
+    // --- 更新模擬結果摘要表格 ---
+    const summaryContainer = document.getElementById("simulation-summary-container");
+    const summaryTableBody = document.getElementById("simulation-summary-table-body");
+    if (!summaryContainer || !summaryTableBody) return chart2;
 
-    // 1. 計算並顯示逕流係數
+    summaryTableBody.innerHTML = ''; // 清空舊內容
+
     if (BasinArea === undefined){
         console.error(`DrawChart(),集水區面積不可為undefined!`)
         return chart2;
     }
-    let Co = RunoffCoeff(BasinArea, PlotData.Rain, PlotData.Runoff, TimeInterv);
-    summaryContainer.append(`<div id="runoff-coeff-info"><span>逕流係數=${Co.toFixed(2)}</span></div>`);
 
-    // 2. 顯示模擬評估指標
-    if (chart2.simRunoffCoeff !== null) {
-        summaryContainer.append(`<div id="sim-runoff-coeff-info" class="ms-4"><span class="text-danger">計算逕流係數=${chart2.simRunoffCoeff.toFixed(2)}</span></div>`);
+    const obsRunoffCoeff = RunoffCoeff(BasinArea, PlotData.Rain, PlotData.Runoff, TimeInterv);
+
+    // 建立一個指標陣列，方便管理和生成表格
+    const metrics = [
+        { label: '觀測逕流係數', value: obsRunoffCoeff, format: (v) => v.toFixed(3) },
+        { label: '模擬逕流係數', value: chart2.simRunoffCoeff, format: (v) => v.toFixed(3) },
+        { label: '納什效率係數 (NSE)', value: chart2.nse, format: (v) => v.toFixed(3) },
+        { label: '均方根誤差 (RMSE)', value: chart2.rmse, format: (v) => v.toFixed(3) + ' cms' },
+        { label: '總量體積誤差', value: chart2.volumeError, format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' %' },
+        { label: '尖峰流量誤差', value: chart2.peakFlowError, format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' %' },
+        { label: '尖峰時間差', value: chart2.timeToPeakError, format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' hr' },
+    ];
+
+    let tableHtml = '';
+    let hasSimulatedData = false;
+
+    metrics.forEach(metric => {
+        if (metric.value !== null && metric.value !== undefined) {
+            if (metric.label.startsWith('模擬') || ['納什', '均方根', '總量', '尖峰'].some(k => metric.label.includes(k))) {
+                hasSimulatedData = true;
+            }
+            tableHtml += `
+                <tr>
+                    <th class="text-nowrap" style="width: 150px;">${metric.label}</th>
+                    <td>${metric.format(metric.value)}</td>
+                </tr>
+            `;
+        }
+    });
+
+    const summaryFooter = document.getElementById('chart-summary');
+
+    // 如果有模擬資料，才顯示整個摘要區塊
+    if (hasSimulatedData) {
+        summaryTableBody.innerHTML = tableHtml;
+        summaryContainer.style.display = 'block';
+        if (summaryFooter) summaryFooter.innerHTML = ''; // 清空舊的註腳
+    } else {
+        // 如果沒有模擬資料，只在圖表註腳顯示觀測逕流係數
+        if (summaryFooter) {
+            summaryFooter.innerHTML = `<span>觀測逕流係數=${obsRunoffCoeff.toFixed(2)}</span>`;
+        }
+        summaryContainer.style.display = 'none';
     }
-    if (chart2.nse !== null) {
-        summaryContainer.append(`<div id="nse-info" class="ms-4"><span class="text-danger">NSE=${chart2.nse.toFixed(3)}</span></div>`);
-    }
-    if (chart2.rmse !== null) {
-        summaryContainer.append(`<div id="rmse-info" class="ms-4"><span class="text-danger">RMSE=${chart2.rmse.toFixed(3)}</span></div>`);
-    }
-    if (chart2.peakFlowError !== null) {
-        const sign = chart2.peakFlowError >= 0 ? '+' : '';
-        summaryContainer.append(`<div id="peak-flow-error-info" class="ms-4"><span class="text-danger">尖峰流量誤差: ${sign}${chart2.peakFlowError.toFixed(1)}%</span></div>`);
-    }
-    if (chart2.timeToPeakError !== null) {
-        const sign = chart2.timeToPeakError >= 0 ? '+' : '';
-        summaryContainer.append(`<div id="time-to-peak-error-info" class="ms-4"><span class="text-danger">尖峰時間差: ${sign}${chart2.timeToPeakError.toFixed(1)}hr</span></div>`);
-    }
-    if (chart2.volumeError !== null) {
-        const sign = chart2.volumeError >= 0 ? '+' : '';
-        summaryContainer.append(`<div id="volume-error-info" class="ms-4"><span class="text-danger">總量體積誤差: ${sign}${chart2.volumeError.toFixed(1)}%</span></div>`);
-    }
+
     return chart2;
 }
 /**
@@ -270,6 +293,7 @@ window.onload = () => {
     const dataCache = {};
     let currentChart = null;
     let currentDisplayData = null; // 用於儲存當前圖表上的資料
+    let calibrationHistory = []; // 用於儲存自動校正歷程
     let selectedObjectiveFunction = 'RMSE'; // Default objective function
 
     const TANK_PARAMS_KEY = 'tankModelUserParams';
@@ -533,8 +557,8 @@ window.onload = () => {
                 if (!isNaN(value)) {
                     currentTankParams[key] = value;
                 } else {
-                    alert(`參數 "${key}" 的值無效，請檢查。`);
                     allParamsValid = false;
+                    showToast(`參數 "${paramConfig[key].keyLabel}" 的值無效，請檢查。`, '輸入錯誤', 'danger');
                 }
             }
         });
@@ -639,10 +663,162 @@ window.onload = () => {
         URL.revokeObjectURL(url);
     };
 
+    /**
+     * 繪製校正歷程的收斂圖
+     */
+    const drawConvergenceChart = () => {
+        if (!calibrationHistory || calibrationHistory.length === 0) {
+            document.getElementById('Chart_Convergence').innerHTML = '<p class="text-center">沒有收斂歷程資料可供繪製。</p>';
+            return;
+        }
+
+        // --- 準備繪圖資料 ---
+        const objectiveData = [];
+        const nseData = [];
+        const changeData = [];
+        
+        let objFuncLabelForAxis;
+        let objFuncLabelForSeries;
+
+        // 根據選擇的目標函數，設定圖表的標籤
+        if (selectedObjectiveFunction === 'NSE') {
+            objFuncLabelForAxis = "目標函數 ((1-NSE)²) ";
+            objFuncLabelForSeries = "目標函數 ((1-NSE)²) ";
+        } else {
+            objFuncLabelForAxis = `目標函數 (${selectedObjectiveFunction})`;
+            objFuncLabelForSeries = `目標函數 (${selectedObjectiveFunction})`;
+        }
+
+        calibrationHistory.forEach(record => {
+            if (typeof record.iteration !== 'number') return;
+
+            // 1. 準備目標函數資料 (給左邊的對數 Y 軸)
+            let objValueForPlot;
+            if (selectedObjectiveFunction === 'NSE') {
+                // 若目標是 NSE，繪製 (1-NSE)²，這是實際被最小化的值
+                if (typeof record.nse === 'number') {
+                    objValueForPlot = Math.pow(1 - record.nse, 2);
+                }
+            } else {
+                // 其他目標函數，直接使用紀錄的值
+                objValueForPlot = record.objective_function;
+            }
+            // 對數軸不接受 <= 0 的值，用一個極小值過濾
+            if (typeof objValueForPlot === 'number') {
+                objectiveData.push([record.iteration, objValueForPlot]);
+            }
+
+            // 2. 準備 NSE 資料 (給右邊的線性 Y 軸)
+            if (typeof record.nse === 'number') {
+                nseData.push([record.iteration, record.nse]);
+            }
+
+            // 3. 準備變化量資料 (給左邊的對數 Y 軸)
+            if (typeof record.change === 'number') {
+                changeData.push([record.iteration, record.change]);
+            }
+        });
+
+        const dataset = [
+            {
+                label: objFuncLabelForSeries,
+                data: objectiveData,
+                color: "#ff0000", // Red
+                yaxis: 1,
+                lines: { show: true },
+                points: { show: true }
+            },
+            {
+                label: "目標函數變化量",
+                data: changeData,
+                color: "#f28c44", // Orange
+                yaxis: 1,
+                lines: { show: true, lineWidth: 1.5, dashes: [2, 2] },
+                points: { show: true, radius: 2 }
+            },
+            {
+                label: "NSE",
+                data: nseData,
+                color: "#0033ff", // Blue
+                yaxis: 2,
+                lines: { show: true, lineWidth: 1, dashes: [5, 5] },
+                points: { show: true, radius: 2 }
+            }
+        ];
+
+        const options = {
+            xaxis: {
+                axisLabel: "疊代次數",
+            },
+            yaxes: [
+                { 
+                    position: "left", 
+                    axisLabel: objFuncLabelForAxis, 
+                    axisLabelUseCanvas: true, 
+                    axisLabelFontSizePixels: 12, 
+                    axisLabelFontFamily: "Verdana, Arial", 
+                    axisLabelPadding: 10
+                },
+                { position: "right", axisLabel: "NSE", axisLabelUseCanvas: true, axisLabelFontSizePixels: 12, axisLabelFontFamily: "Verdana, Arial", axisLabelPadding: 5 }
+            ],
+            grid: {
+                hoverable: true,
+                clickable: true,
+                backgroundColor: { colors: ["#fff", "#f0f0f0"] }
+            },
+            legend: {
+                show: true,
+                noColumns: 3, // 將圖例項目排成 3 欄
+                position: "ne", // 放置在右上角
+                margin: [10, -22] // [x, y] margin, 負 y 值會將圖例向上移動
+            },
+            tooltip: true,
+            tooltipOpts: {
+                content: function(label, xval, yval, flotItem) {
+                    // 使用疊代次數 (xval) 來找到對應的歷史紀錄，更為可靠
+                    const record = calibrationHistory.find(r => r.iteration === xval);
+                    if (!record) {
+                        return `疊代 ${xval}: ${label} = ${yval.toExponential(4)}`;
+                    }
+
+                    // 取得所有可編輯參數的鍵
+                    const editableParamKeys = Object.keys(paramConfig).filter(k => paramConfig[k].editable);
+
+                    let paramsHtml = '<table class="table table-sm table-borderless table-hover mb-0 small">';
+                    editableParamKeys.forEach(key => {
+                        const value = record[key];
+                        if (value !== undefined) {
+                            paramsHtml += `<tr><td>${paramConfig[key].keyLabel || key}:</td><td class="text-end">${Number(value).toFixed(4)}</td></tr>`;
+                        }
+                    });
+                    paramsHtml += '</table>';
+
+                    // 根據系列決定數值格式
+                    let yval_str;
+                    if (label === 'NSE') {
+                        yval_str = yval.toFixed(4);
+                    } else {
+                        yval_str = yval.toExponential(4);
+                    }
+                    const header = `<strong>疊代 ${record.iteration}</strong><br/>${label}: ${yval_str}<hr class="my-1"/>`;
+                    
+                    return `<div class="p-1" style="min-width: 180px;">${header}${paramsHtml}</div>`;
+                }
+            }
+        };
+
+        $.plot("#Chart_Convergence", dataset, options);
+    };
+
+    
     const redraw = async () => {
         const startDateStr = document.getElementById("obs-date").value;
         const newResId = "RSHME";
         const newYear = startDateStr.substring(0, 4);
+
+        // 清空舊的摘要和圖表註腳
+        document.getElementById('simulation-summary-container').style.display = 'none';
+        document.getElementById('chart-summary').innerHTML = '';
 
         const fullYearData = await fetchAndCacheData(newYear, newResId);
         if (fullYearData) {
@@ -653,6 +829,7 @@ window.onload = () => {
     // Initial draw
     // 顯示水筒模式參數 (從 localStorage 或預設值載入)
     displayTankParameters(activeTankParams);
+    // 初始繪圖
     redraw();
 
     // Event handlers
@@ -675,6 +852,10 @@ window.onload = () => {
         const otherButtons = ["run-tank-model-btn", "reset-tank-params-btn", "save-tank-params-btn", "download-tank-params-btn"];
         const loadLabel = document.querySelector('label[for="load-tank-params-input"]');
 
+        // 每次校正開始前，清空舊的歷程並隱藏下載按鈕
+        calibrationHistory = [];
+        document.getElementById("convergence-chart-container").style.display = 'none';
+        document.getElementById("download-calib-history-btn").style.display = 'none';
         autocalBtn.disabled = true;
         autocalBtn.textContent = '校正中...';
         otherButtons.forEach(id => document.getElementById(id).disabled = true);
@@ -692,6 +873,9 @@ window.onload = () => {
         progressText.textContent = '準備開始校正...';
 
         try {
+            // 宣告一個變數來暫存每次疊代的模擬結果，以便在 onProgress 中計算額外的指標
+            let lastSimulatedRunoffForHistory = [];
+
             // 3. 收集目前的參數與其上下限，作為 RPROP 演算法的初始值
             const editableParamKeys = ['h1', 'h2', 'a1', 'a2', 'a3', 'h3', 'b1', 'b2', 'b3', 'HTank1', 'HTank2'];
             const initialParamsArray = [];
@@ -715,6 +899,9 @@ window.onload = () => {
 
                 // 執行水筒模式
                 const simulatedRunoff = runTankModel(currentDisplayData.Rain, currentParams, TimeInterv);
+
+                // 儲存模擬結果，供 onProgress 回呼使用
+                lastSimulatedRunoffForHistory = simulatedRunoff;
 
                 // --- 目標函數選擇 ---
                 // 您可以在此處切換不同的目標函數。
@@ -775,6 +962,27 @@ window.onload = () => {
                     progressBar.setAttribute('aria-valuenow', percent);
                     progressBar.textContent = percentStr;
 
+                    // 計算當前疊代的 NSE 值 (即使目標函數不是 NSE)
+                    const currentNse = Utils.calculateNSE(currentDisplayData.Runoff, lastSimulatedRunoffForHistory);
+
+                    // 儲存當前疊代的校正歷程
+                    const currentProgress = {
+                        iteration: progress.iteration,
+                        objective_function: progress.value,
+                        nse: currentNse !== null ? currentNse : 'N/A', // 如果計算失敗則顯示 N/A
+                        change: progress.change,
+                    };
+                    // 如果目標函數是 NSE，objective_function 存的是 (1-NSE)^2，這裡直接用計算好的 nse 覆蓋
+                    if (selectedObjectiveFunction === 'NSE') {
+                        currentProgress.objective_function = currentNse !== null ? currentNse : 'N/A';
+                    }
+
+                    editableParamKeys.forEach((key, index) => {
+                        // 將參數名稱加入到紀錄中
+                        currentProgress[key] = progress.params[index];
+                    });
+                    calibrationHistory.push(currentProgress);
+
                     // 更新進度文字 (修正: 使用 progress.change)
                     progressText.textContent = `疊代: ${progress.iteration}/${rpropSettings.maxIter} | 目標函數值: ${progress.value.toExponential(4)} | 變化量: ${progress.change.toExponential(4)}`;
                     // 在開發者控制台中顯示詳細進度
@@ -801,6 +1009,11 @@ window.onload = () => {
             const calibTitle = `水筒模式參數自動校正結果圖 (${selectedObjectiveFunction})`;
             runAndDrawSimulation(calibTitle);
 
+            // 8. 顯示相關區塊，然後繪製收斂圖 (必須先顯示容器才能取得寬度)
+            document.getElementById("convergence-chart-container").style.display = 'block';
+            drawConvergenceChart();
+            document.getElementById("download-calib-history-btn").style.display = 'inline-block';
+
         } catch (error) {
             console.error("自動校正失敗:", error);
             progressBar.style.width = '100%';
@@ -809,7 +1022,7 @@ window.onload = () => {
             progressBar.classList.add('bg-danger');
             progressText.textContent = `自動校正失敗: ${error.message || error}`;
         } finally {
-            // 8. 恢復按鈕狀態
+            // 9. 恢復按鈕狀態
             autocalBtn.disabled = false;
             autocalBtn.textContent = '自動校正';
             otherButtons.forEach(id => document.getElementById(id).disabled = false);
@@ -1018,6 +1231,44 @@ window.onload = () => {
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
         link.setAttribute("download", "hydrograph_data.csv");
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+
+    document.getElementById("download-calib-history-btn").addEventListener('click', () => {
+        if (!calibrationHistory || calibrationHistory.length === 0) {
+            showToast("沒有可下載的校正歷程。", "提示", "warning");
+            return;
+        }
+
+        // 產生 CSV 標頭
+        const headers = Object.keys(calibrationHistory[0]);
+        let csvRows = [headers.join(",")];
+
+        // 產生 CSV 內容
+        for (const row of calibrationHistory) {
+            const values = headers.map(header => {
+                const value = row[header];
+                // 對科學記號的數字做特別處理，避免 Excel 顯示問題
+                if (typeof value === 'number' && (Math.abs(value) < 1e-3 || Math.abs(value) > 1e6) && value !== 0) {
+                    return `"${value.toExponential(6)}"`;
+                }
+                return value;
+            });
+            csvRows.push(values.join(","));
+        }
+
+        const csvString = csvRows.join("\r\n");
+        // Add BOM for Excel to recognize UTF-8
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+        const blob = new Blob([bom, csvString], { type: 'text/csv;charset=utf-8;' });
+
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", "calibration_history.csv");
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
