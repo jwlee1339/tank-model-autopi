@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <!-- D:\home\2_MIT\Hydro\01_石門水庫\tank_model_autopi\index.html -->
@@ -129,6 +129,7 @@
                     </ul>
                 </div>
                 <button type="button" id="rprop-settings-btn" class="btn btn-sm btn-outline-secondary ms-1" data-bs-toggle="modal" data-bs-target="#rpropSettingsModal" title="設定 RPROP 自動校正演算法的參數">校正設定</button>
+                <button type="button" id="download-calib-history-btn" class="btn btn-sm btn-outline-info ms-1" title="下載最近一次自動校正的完整歷程" style="display: none;">下載校正歷程</button>
             </div>
             <div id="autocal-progress-container" class="card-footer py-2" style="display: none;">
                 <div class="progress" style="height: 20px;">
@@ -142,11 +143,11 @@
         <div class="card bg-white rounded">
 
             <div class="card-header bg-primary d-flex justify-content-between align-items-center">
-                <div>
-                    <span id="SubID" class="text-light"></span>
-                    <span id="chart-title-text" class="text-light">集水區降雨逕流與觀測流量歷線圖</span>
+                <h6 class="mb-0 text-light">
+                    <span id="SubID"></span>
+                    <span id="chart-title-text">集水區降雨逕流與觀測流量歷線圖</span>
                     <span id="Load-indicator1" class="badge w3-yellow"></span>
-                </div>
+                </h6>
                 <div>
                     <button id="export-png-btn" class="btn btn-sm btn-light" title="將目前的圖表匯出為 PNG 圖片檔">匯出 PNG</button>
                 </div>
@@ -169,11 +170,42 @@
     </div>
     <br />
 
+    <!-- Simulation Summary -->
+    <div class="container-lg mt-2" id="simulation-summary-container" style="display: none;">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h6 class="mb-0">模擬結果摘要</h6>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-bordered mb-0">
+                    <tbody id="simulation-summary-table-body">
+                        <!-- Summary rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Convergence Chart Container -->
+    <div class="container-lg mt-3" id="convergence-chart-container" style="display: none;">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h6 class="mb-0">自動校正收斂過程</h6>
+            </div>
+            <div class="card-body">
+                <div class="flot-chart">
+                    <div id="Chart_Convergence" class="demo-placeholder"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <!-- Data Table -->
     <div class="container-lg mt-3">
         <div class="card bg-white rounded">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0" id="table-title">詳細數據列表</h5>
+                <h6 class="mb-0" id="table-title">詳細數據列表</h6>
                 <div class="d-flex">
                     <input type="text" id="table-search" class="form-control form-control-sm me-2" placeholder="搜尋時間 (YYYY-MM-DD HH:MM)...">
                     <button id="export-csv-btn" class="btn btn-sm btn-light text-nowrap" title="將下方的詳細數據匯出為 CSV 檔案">匯出 CSV</button>
