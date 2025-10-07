@@ -1,5 +1,5 @@
 /* Chart2.js
- 
+ 2025-10-07 更新
  */
 
 "use strict";
@@ -36,6 +36,10 @@ export class Chart2 {
         this.simRunoffCoeff = null;
         // console.log('timeIntervFactor=',this.timeIntervFactor)
     }
+    /**
+     * @ignore
+     */
+
     /**
      * 顯示子結果表格
      */
@@ -163,6 +167,65 @@ export class Chart2 {
             max = Math.max(max, array[i]);
         }
         return [min, max];
+    }
+
+    /**
+     * @ignore
+     */
+
+    /**
+     * 在圖表上顯示模擬結果的摘要圖層。
+     * @param {boolean} show - 是否顯示摘要。
+     */
+    displaySummaryOverlay(show) {
+        const placeholder = $(this.DOM);
+        placeholder.find(".simulation-summary-overlay").remove(); // 移除舊的摘要
+
+        if (!show || this.nse === null) {
+            return; // 如果不顯示或沒有模擬資料，則不執行
+        }
+
+        // 觀測逕流係數與模擬逕流係數已移至 card-footer
+        const metrics = [
+            { label: 'NSE', value: this.nse, format: (v) => v.toFixed(3) },
+            { label: 'RMSE', value: this.rmse, format: (v) => v.toFixed(2) + ' cms' },
+            { label: '尖峰流量誤差', value: this.peakFlowError, format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' %' },
+            { label: '尖峰時間差', value: this.timeToPeakError, format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' hr' },
+            { label: '總量體積誤差', value: this.volumeError, format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' %' },
+        ];
+
+        let summaryHtml = '<table class="table table-sm table-borderless mb-0">';
+        metrics.forEach(metric => {
+            if (metric.value !== null && metric.value !== undefined) {
+                summaryHtml += `
+                    <tr>
+                        <td class="py-1 pe-2">${metric.label}:</td>
+                        <td class="py-1 fw-bold text-end">${metric.format(metric.value)}</td>
+                    </tr>
+                `;
+            }
+        });
+        summaryHtml += '</table>';
+
+        const plotOffset = this.plot.getPlotOffset();
+        const boxY = plotOffset.top + 16; // 離頂部 10px
+        const boxXFromRight = plotOffset.right + 10; // 離右側 10px
+
+        const overlay = $(`
+            <div class="simulation-summary-overlay">
+                ${summaryHtml}
+            </div>
+        `).css({
+            position: 'absolute',
+            right: `${boxXFromRight}px`,
+            top: `${boxY}px`,
+            'border-radius': '5px',
+            padding: '5px 10px',
+            'background-color': 'rgba(255, 255, 255, 0.85)',
+            'border': '1px solid #ccc',
+            'font-size': '12px',
+            'z-index': 10, // 確保在圖表之上
+        }).appendTo(placeholder);
     }
 
 
