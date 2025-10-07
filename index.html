@@ -149,7 +149,11 @@
                     <span id="Load-indicator1" class="badge w3-yellow"></span>
                 </h6>
                 <div>
-                    <button id="export-png-btn" class="btn btn-sm btn-light" title="將目前的圖表匯出為 PNG 圖片檔">匯出 PNG</button>
+                    <div class="form-check form-check-inline form-switch me-2 align-middle">
+                        <input class="form-check-input" type="checkbox" id="toggle-summary-overlay" checked title="切換是否在圖表上顯示模擬結果摘要">
+                        <label class="form-check-label text-light small" for="toggle-summary-overlay">顯示摘要</label>
+                    </div>
+                    <button id="export-png-btn" class="btn btn-sm btn-light" title="將目前的圖表匯出為 PNG 圖片檔">匯出PNG</button>
                 </div>
             </div>
 
@@ -208,7 +212,9 @@
                 <h6 class="mb-0" id="table-title">詳細數據列表</h6>
                 <div class="d-flex">
                     <input type="text" id="table-search" class="form-control form-control-sm me-2" placeholder="搜尋時間 (YYYY-MM-DD HH:MM)...">
-                    <button id="export-csv-btn" class="btn btn-sm btn-light text-nowrap" title="將下方的詳細數據匯出為 CSV 檔案">匯出 CSV</button>
+                    <button id="edit-data-btn" class="btn btn-sm btn-warning me-2 text-nowrap" title="啟用或儲存對下方表格中降雨與流量資料的編輯">編輯資料</button>
+                    <button id="cancel-edit-btn" class="btn btn-sm btn-secondary me-2 text-nowrap" title="放棄編輯並還原資料" style="display: none;">取消編輯</button>
+                    <button id="export-csv-btn" class="btn btn-sm btn-light text-nowrap" title="將下方的詳細數據匯出為 CSV 檔案">匯出CSV</button>
                 </div>
             </div>
             <div class="card-body p-0" style="height: 400px; overflow-y: auto;">
