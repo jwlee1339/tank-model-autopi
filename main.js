@@ -95,8 +95,8 @@ function DrawChart(PlotData, ResId) {
 
     // 建立一個指標陣列，方便管理和生成表格
     const metrics = [
-        { label: '觀測逕流係數', value: obsRunoffCoeff, format: (v) => v.toFixed(3) },
-        { label: '模擬逕流係數', value: chart2.simRunoffCoeff, format: (v) => v.toFixed(3) },
+        // { label: '觀測逕流係數', value: obsRunoffCoeff, format: (v) => v.toFixed(3) },
+        // { label: '模擬逕流係數', value: chart2.simRunoffCoeff, format: (v) => v.toFixed(3) },
         { label: '納什效率係數 (NSE)', value: chart2.nse, format: (v) => v.toFixed(3) },
         { label: '均方根誤差 (RMSE)', value: chart2.rmse, format: (v) => v.toFixed(3) + ' cms' },
         { label: '總量體積誤差', value: chart2.volumeError, format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' %' },
@@ -109,7 +109,7 @@ function DrawChart(PlotData, ResId) {
 
     metrics.forEach(metric => {
         if (metric.value !== null && metric.value !== undefined) {
-            if (metric.label.startsWith('模擬') || ['納什', '均方根', '總量', '尖峰'].some(k => metric.label.includes(k))) {
+            if (['納什', '均方根', '總量', '尖峰'].some(k => metric.label.includes(k))) {
                 hasSimulatedData = true;
             }
             tableHtml += `
@@ -123,18 +123,27 @@ function DrawChart(PlotData, ResId) {
 
     const summaryFooter = document.getElementById('chart-summary');
 
+    // --- 更新圖表註腳 ---
+    let footerHtml = `<span>觀測逕流係數=${obsRunoffCoeff.toFixed(2)}</span>`;
+    if (chart2.simRunoffCoeff !== null) {
+        footerHtml += `<span class="ms-3">模擬逕流係數=${chart2.simRunoffCoeff.toFixed(2)}</span>`;
+    }
+
     // 如果有模擬資料，才顯示整個摘要區塊
     if (hasSimulatedData) {
         summaryTableBody.innerHTML = tableHtml;
         summaryContainer.style.display = 'block';
-        if (summaryFooter) summaryFooter.innerHTML = ''; // 清空舊的註腳
     } else {
-        // 如果沒有模擬資料，只在圖表註腳顯示觀測逕流係數
-        if (summaryFooter) {
-            summaryFooter.innerHTML = `<span>觀測逕流係數=${obsRunoffCoeff.toFixed(2)}</span>`;
-        }
         summaryContainer.style.display = 'none';
     }
+
+    if (summaryFooter) {
+        summaryFooter.innerHTML = footerHtml;
+    }
+
+    // 根據 checkbox 狀態顯示或隱藏摘要圖層
+    const showOverlay = document.getElementById('toggle-summary-overlay').checked;
+    chart2.displaySummaryOverlay(showOverlay);
 
     return chart2;
 }
@@ -293,6 +302,7 @@ window.onload = () => {
     const dataCache = {};
     let currentChart = null;
     let currentDisplayData = null; // 用於儲存當前圖表上的資料
+    let originalDataBeforeEdit = null; // 用於儲存編輯前的資料備份
     let calibrationHistory = []; // 用於儲存自動校正歷程
     let selectedObjectiveFunction = 'RMSE'; // Default objective function
 
@@ -810,12 +820,78 @@ window.onload = () => {
         $.plot("#Chart_Convergence", dataset, options);
     };
 
+    // --- Data Editing Handlers (Moved Up) ---
+    const editDataBtn = document.getElementById('edit-data-btn');
+    const cancelEditBtn = document.getElementById('cancel-edit-btn');
+    const dataTableBody = document.getElementById('data-table-body');
+    let isEditing = false;
+
+    const enterEditMode = () => {
+        if (!currentDisplayData) return;
+        isEditing = true;
+        // 備份當前資料
+        originalDataBeforeEdit = JSON.parse(JSON.stringify(currentDisplayData));
+
+        editDataBtn.textContent = '儲存編輯';
+        editDataBtn.classList.replace('btn-warning', 'btn-success');
+        cancelEditBtn.style.display = 'inline-block';
+
+        const rows = dataTableBody.getElementsByTagName('tr');
+        for (const row of rows) {
+            // 讓雨量和流量欄位可編輯
+            if (row.cells[1]) row.cells[1].contentEditable = 'true';
+            if (row.cells[2]) row.cells[2].contentEditable = 'true';
+        }
+        dataTableBody.parentElement.classList.add('table-editing');
+        showToast('表格編輯已啟用。', '編輯模式', 'info');
+    };
+
+    const exitEditMode = (saveChanges = false) => {
+        if (!isEditing) return;
+
+        if (saveChanges) {
+            try {
+                const rows = dataTableBody.getElementsByTagName('tr');
+                for (let i = 0; i < rows.length; i++) {
+                    const rainValue = parseFloat(rows[i].cells[1].textContent);
+                    const runoffValue = parseFloat(rows[i].cells[2].textContent);
+
+                    if (!isNaN(rainValue)) currentDisplayData.Rain[i] = rainValue;
+                    if (!isNaN(runoffValue)) currentDisplayData.Runoff[i] = runoffValue;
+                }
+                // 重新繪製圖表以反映變更
+                const resId = "RSHME";
+                currentChart = DrawChart(currentDisplayData, resId);
+                showToast('資料已更新。', '儲存成功', 'success');
+            } catch (error) {
+                console.error("儲存編輯時發生錯誤:", error);
+                showToast('儲存失敗，請檢查輸入的資料格式。', '錯誤', 'danger');
+                // 如果儲存失敗，還原資料
+                currentDisplayData = originalDataBeforeEdit;
+            }
+        } else {
+            // 取消編輯，還原資料
+            if (originalDataBeforeEdit) {
+                currentDisplayData = originalDataBeforeEdit;
+                currentChart = DrawChart(currentDisplayData, "RSHME"); // 重新繪製以還原
+                showToast('編輯已取消。', '提示', 'info');
+            }
+        }
+
+        isEditing = false;
+        originalDataBeforeEdit = null;
+        editDataBtn.textContent = '編輯資料';
+        editDataBtn.classList.replace('btn-success', 'btn-warning');
+        cancelEditBtn.style.display = 'none';
+        dataTableBody.parentElement.classList.remove('table-editing');
+    };
     
     const redraw = async () => {
         const startDateStr = document.getElementById("obs-date").value;
         const newResId = "RSHME";
         const newYear = startDateStr.substring(0, 4);
 
+        exitEditMode(false); // 如果正在編輯，則取消編輯模式
         // 清空舊的摘要和圖表註腳
         document.getElementById('simulation-summary-container').style.display = 'none';
         document.getElementById('chart-summary').innerHTML = '';
@@ -1415,6 +1491,26 @@ window.onload = () => {
         });
     });
 
+    editDataBtn.addEventListener('click', () => {
+        if (isEditing) {
+            exitEditMode(true); // 儲存變更
+        } else {
+            enterEditMode();
+        }
+    });
+
+    cancelEditBtn.addEventListener('click', () => {
+        if (confirm('您確定要放棄所有變更嗎？')) {
+            exitEditMode(false); // 不儲存，直接退出
+        }
+    });
+
+    // 摘要圖層顯示切換的事件處理
+    document.getElementById('toggle-summary-overlay').addEventListener('change', (e) => {
+        if (currentChart) {
+            currentChart.displaySummaryOverlay(e.target.checked);
+        }
+    });
     // on window resize, plot chart again!
     // window.onresize = PlotRainfallRunoffMain;
 };
