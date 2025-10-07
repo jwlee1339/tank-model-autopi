@@ -423,3 +423,16 @@ table,
 table th {
 	text-align: center;
 }
+/* Style for data table when in editing mode */
+.table-editing {
+    border: 2px solid #ffc107; /* Bootstrap warning color */
+    box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+}
+.table-editing td[contenteditable="true"] {
+    background-color: #fff3cd; /* Lighter warning color */
+}
+
+/* For simulation summary overlay on chart */
+.simulation-summary-overlay .table td {
+    white-space: nowrap;
+}
